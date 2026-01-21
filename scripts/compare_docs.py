@@ -41,6 +41,18 @@ def process_pair(f1, f2, reporter):
     # 1. Structure Analysis (Tables)
     h1 = convert_to_html(f1)
     h2 = convert_to_html(f2)
+    
+    # Save text for Agent Analysis
+    t1 = convert_to_text(f1)
+    t2 = convert_to_text(f2)
+    
+    output_dir = os.path.dirname(f1)
+    p1_name = os.path.basename(f1)
+    p2_name = os.path.basename(f2)
+    
+    with open(os.path.join(output_dir, f"Text_Extract_{p1_name}.txt"), 'w') as f: f.write(t1)
+    with open(os.path.join(output_dir, f"Text_Extract_{p2_name}.txt"), 'w') as f: f.write(t2)
+    
     tp = TableParser()
     d1 = tp.parse(h1) if h1 else []
     d2 = tp.parse(h2) if h2 else []
