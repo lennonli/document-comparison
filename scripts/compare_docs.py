@@ -13,6 +13,7 @@ from comparators.consistency_check import ConsistencyChecker
 from comparators.llm_client import LLMClient # New
 from utils.nlp_utils import NLPUtils         # New
 from reporters.md_reporter import MDReporter
+import re
 
 # Initialize global NLP utils
 nlp = NLPUtils()
@@ -57,6 +58,38 @@ def process_pair(f1, f2, reporter):
     d1 = tp.parse(h1) if h1 else []
     d2 = tp.parse(h2) if h2 else []
     
+    # ❌ FIX: Extract "Actual Controller" / "Controlling Shareholder" via Regex from Text
+    # Because one file might have it in text paragraph, other in table.
+    # We add a virtual table for this.
+    
+    def extract_key_personnel(text):
+        info = {}
+        # Pattern: "实际控制人[为|是][:：]?\s*([\u4e00-\u9fa5]+)"
+        # Or in tables, captured by next line... but let's try text first.
+        # This is a heuristic.
+        m_ctrl = re.search(r'(?:实际控制人|实控人)[为|是|：|:]?\s*([\u4e00-\u9fa5]{2,10})', text)
+        if m_ctrl: info['实际控制人'] = m_ctrl.group(1)
+        
+        m_share = re.search(r'(?:控股股东)[为|是|：|:]?\s*([\u4e00-\u9fa5]{2,10})', text)
+        if m_share: info['控股股东'] = m_share.group(1)
+        return info
+
+    kp1 = extract_key_personnel(t1)
+    kp2 = extract_key_personnel(t2)
+    
+    # If found in both, compare
+    kp_issues = []
+    for k in ['实际控制人', '控股股东']:
+        v1 = kp1.get(k)
+        v2 = kp2.get(k)
+        if v1 and v2 and v1 != v2:
+            # Simple fuzzy check
+            if nlp.get_similarity(v1, v2) < 0.8:
+                kp_issues.append(f"⚠️ {k} 不一致: {os.path.basename(f1)}='{v1}' vs {os.path.basename(f2)}='{v2}'")
+            
+    # Also inject these issues into the reporter later
+
+    
     # 2. Table Data Comparison (With Semantic Matching in Fuzzy Logic)
     # We ideally update fuzzy_logic to use nlp.get_similarity() but for now keep structured logic
     cmp = DataComparator()
@@ -71,7 +104,11 @@ def process_pair(f1, f2, reporter):
     extra_issues2 = sc.check_file(f2) + cc.check_file(f2)
     
     for t in d1: extra_issues1.extend(lc.check_table_logic(t))
+    for t in d1: extra_issues1.extend(lc.check_table_logic(t))
     for t in d2: extra_issues2.extend(lc.check_table_logic(t))
+    
+    # Add Key Personnel Issues
+    extra_issues1.extend(kp_issues)
     
     # 4. LLM Insight (The Real Intelligence)
     llm = LLMClient()
