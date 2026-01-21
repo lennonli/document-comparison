@@ -21,6 +21,14 @@ An intelligent document comparison tool designed for legal and financial profess
 - **📝 Automated Proofreading**: Detects typos (e.g., missing characters in critical names like "Bank of China") and unbalanced brackets.
 - **📂 Batch Mode**: Supports comparing entire folders of documents, automatically matching files by name.
 
+### Usage Scenarios
+
+This tool is particularly suitable for comparing documents from intermediary institutions, such as:
+- **Prospectus (Broker) vs. Legal Opinion (Lawyer)**
+- Identifying discrepancies in **Assets** (e.g., patent lists, property details).
+- Verifying **Historical Equity Evolution**.
+- Checking **Related Party Transactions** and associated details.
+
 ### Installation
 
 ```bash
@@ -69,6 +77,12 @@ This skill is designed to be used with the Antigravity Agent.
   - **定义一致性**：识别定义后未使用的简称（例如定义了“简称”，但后文仍大量使用全称）。
 - **📝 自动校对**：检测低级错误（例如“中国银深圳分行”漏字）以及中英文括号不匹配等问题。
 - **📂 批量模式**：支持直接传入两个文件夹，系统会自动按文件名相似度配对并批量生成报告。
+
+### 使用场景
+
+本工具特别适合需要严格核对的中介机构文件比对，例如：
+- **招股说明书（券商） vs 法律意见书（律师）**
+- 重点比对：**资产情况**（专利、房产列表等）、**股权历史沿革**、**关联方及关联交易**等核心章节的实质性差异。
 
 ### 安装方法
 
