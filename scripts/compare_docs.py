@@ -3,7 +3,6 @@ import sys
 import os
 import argparse
 import subprocess
-import shutil
 import difflib
 
 from parsers.table_parser import TableParser
@@ -11,7 +10,12 @@ from comparators.fuzzy_logic import DataComparator
 from comparators.spell_check import SpellChecker
 from comparators.logic_check import LogicChecker
 from comparators.consistency_check import ConsistencyChecker
+from comparators.llm_client import LLMClient # New
+from utils.nlp_utils import NLPUtils         # New
 from reporters.md_reporter import MDReporter
+
+# Initialize global NLP utils
+nlp = NLPUtils()
 
 def convert_to_html(file_path):
     base_name = os.path.basename(file_path)
@@ -24,69 +28,80 @@ def convert_to_html(file_path):
             return None
     return file_path
 
+def convert_to_text(file_path):
+    try:
+        res = subprocess.run(['textutil', '-convert', 'txt', '-stdout', file_path], capture_output=True, text=True)
+        return res.stdout
+    except:
+        return ""
+
 def process_pair(f1, f2, reporter):
     print(f"Comparing: {os.path.basename(f1)} <-> {os.path.basename(f2)}")
     
-    # 1. Convert
+    # 1. Structure Analysis (Tables)
     h1 = convert_to_html(f1)
     h2 = convert_to_html(f2)
-    
-    if not h1 or not h2:
-        return None
-    
-    # 2. Parse Tables
     tp = TableParser()
-    d1 = tp.parse(h1)
-    d2 = tp.parse(h2)
+    d1 = tp.parse(h1) if h1 else []
+    d2 = tp.parse(h2) if h2 else []
     
-    # 3. Compare Data
+    # 2. Table Data Comparison (With Semantic Matching in Fuzzy Logic)
+    # We ideally update fuzzy_logic to use nlp.get_similarity() but for now keep structured logic
     cmp = DataComparator()
     diffs = cmp.compare_datasets(d1, d2)
     
-    # 4. Logic Checks (New)
+    # 3. Logic & Consistency Checks
     lc = LogicChecker()
-    logic_issues1 = []
-    logic_issues2 = []
-    for t in d1: logic_issues1.extend(lc.check_table_logic(t))
-    for t in d2: logic_issues2.extend(lc.check_table_logic(t))
-    
-    # 5. Consistency Checks (New)
     cc = ConsistencyChecker()
-    consis_issues1 = cc.check_file(f1)
-    consis_issues2 = cc.check_file(f2)
-    
-    # 6. Spell Check
     sc = SpellChecker()
-    spell1 = sc.check_file(f1)
-    spell2 = sc.check_file(f2)
     
-    # 7. Generate Single Report
-    # Merge issues
-    issues1 = spell1 + logic_issues1 + consis_issues1
-    issues2 = spell2 + logic_issues2 + consis_issues2
+    extra_issues1 = sc.check_file(f1) + cc.check_file(f1)
+    extra_issues2 = sc.check_file(f2) + cc.check_file(f2)
     
-    return reporter.generate(diffs, issues1, issues2, f1, f2)
+    for t in d1: extra_issues1.extend(lc.check_table_logic(t))
+    for t in d2: extra_issues2.extend(lc.check_table_logic(t))
+    
+    # 4. LLM Insight (The Real Intelligence)
+    llm = LLMClient()
+    llm_insights = []
+    
+    if llm.is_available():
+        print("🤖 Invoking LLM for semantic analysis...")
+        t1 = convert_to_text(f1)
+        t2 = convert_to_text(f2)
+        
+        # Simple chunking: Compare first 4000 chars as summary? 
+        # Or better: if small enough, compare whole. If large, compare specific keywords sections.
+        # For this demo, we compare the first 8000 chars which usually contains the meat.
+        insight = llm.compare_sections(t1[:8000], t2[:8000], section_name="全文核心内容")
+        if insight and insight.get('has_diff'):
+            llm_insights.append(insight)
+    else:
+        # Fallback: Just mentioning semantic similarity check passed via Jieba
+        pass
+
+    return reporter.generate(diffs, extra_issues1, extra_issues2, f1, f2, llm_insights)
 
 def find_best_match(target_file, candidate_files):
-    # Use fuzzy string matching on filenames
     target_name = os.path.basename(target_file)
     best_match = None
     best_ratio = 0.0
     
     for c in candidate_files:
         c_name = os.path.basename(c)
+        # Use Jieba/NLP similarity for filename matching too?
+        # For now difflib is safer for filenames
         ratio = difflib.SequenceMatcher(None, target_name, c_name).ratio()
         if ratio > best_ratio:
             best_ratio = ratio
             best_match = c
             
-    # Threshold? e.g. 0.4
     if best_ratio > 0.4:
         return best_match
     return None
 
 def main():
-    parser = argparse.ArgumentParser(description="Document Comparison Skill v2.0")
+    parser = argparse.ArgumentParser(description="Document Comparison Skill v3.0 (AI Powered)")
     parser.add_argument("path1", help="File or Folder 1")
     parser.add_argument("path2", help="File or Folder 2")
     args = parser.parse_args()
@@ -96,33 +111,22 @@ def main():
     
     reporter = MDReporter()
     
-    # Mode Detection
     if os.path.isdir(p1) and os.path.isdir(p2):
         print("📂 Batch Mode Activated")
-        # List files
         files1 = [os.path.join(p1, f) for f in os.listdir(p1) if f.endswith('.docx') or f.endswith('.doc')]
         files2_pool = [os.path.join(p2, f) for f in os.listdir(p2) if f.endswith('.docx') or f.endswith('.doc')]
-        
-        results = []
         
         for f1 in files1:
             match = find_best_match(f1, files2_pool)
             if match:
-                print(f"✅ Matched: {os.path.basename(f1)} == {os.path.basename(match)}")
-                r = process_pair(f1, match, reporter)
-                results.append(r)
-                # files2_pool.remove(match) # Optional: don't reuse
+                process_pair(f1, match, reporter)
             else:
-                print(f"⚠️ No match found for {os.path.basename(f1)}")
+                print(f"⚠️ No match for {os.path.basename(f1)}")
                 
-        print(f"\nBatch processing complete. Generated {len(results)} reports.")
-        
     elif os.path.isfile(p1) and os.path.isfile(p2):
-        print("📄 Single File Mode")
-        r = process_pair(p1, p2, reporter)
-        print(f"Report: {r}")
+        process_pair(p1, p2, reporter)
     else:
-        print("Error: Please provide two files OR two directories.")
+        print("Error: Invalid paths.")
 
 if __name__ == "__main__":
     main()
