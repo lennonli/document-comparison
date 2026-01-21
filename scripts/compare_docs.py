@@ -12,8 +12,10 @@ from comparators.logic_check import LogicChecker
 from comparators.consistency_check import ConsistencyChecker
 from comparators.llm_client import LLMClient # New
 from utils.nlp_utils import NLPUtils         # New
+from parsers.section_chunker import SectionChunker # New
 from reporters.md_reporter import MDReporter
 import re
+import json
 
 # Initialize global NLP utils
 nlp = NLPUtils()
@@ -47,16 +49,29 @@ def process_pair(f1, f2, reporter):
     t1 = convert_to_text(f1)
     t2 = convert_to_text(f2)
     
-    output_dir = os.path.dirname(f1)
-    p1_name = os.path.basename(f1)
-    p2_name = os.path.basename(f2)
-    
-    with open(os.path.join(output_dir, f"Text_Extract_{p1_name}.txt"), 'w') as f: f.write(t1)
-    with open(os.path.join(output_dir, f"Text_Extract_{p2_name}.txt"), 'w') as f: f.write(t2)
-    
     tp = TableParser()
     d1 = tp.parse(h1) if h1 else []
     d2 = tp.parse(h2) if h2 else []
+    
+    # --- Section Aware Processing (New v3.5) ---
+    chunker = SectionChunker()
+    secs1 = chunker.chunk_text(t1)
+    secs2 = chunker.chunk_text(t2)
+    aligned_data = chunker.align_sections(secs1, secs2)
+    
+    # Save Aligned Data for Agent
+    output_dir = os.path.dirname(f1)
+    p1_name = os.path.basename(f1)
+    json_path = os.path.join(output_dir, f"Comparison_Aligned_{p1_name}.json")
+    with open(json_path, 'w', encoding='utf-8') as f:
+        json.dump(aligned_data, f, ensure_ascii=False, indent=2)
+        
+    print(f"✅ Generated Aligned JSON: {json_path}")
+    
+    # --- End Section Aware Processing ---
+
+    
+    # 2. Table Data Comparison (With Semantic Matching in Fuzzy Logic)
     
     # ❌ FIX: Extract "Actual Controller" / "Controlling Shareholder" via Regex from Text
     # Because one file might have it in text paragraph, other in table.
