@@ -1,47 +1,79 @@
 ---
-name: Document Comparison
-description: Intelligent comparison of legal/financial documents.
-usage: |
-  compare-docs <file1> <file2>
-  compare-docs <dir1> <dir2>
+name: compare-docs
+description: Compares two documents (docx, md, txt, pdf) to identify substantive differences, focusing on financial data, key clauses, and statistical discrepancies. Generates a formatted comparison report. Use when the user asks to "compare documents", "check differences between files", "find discrepancies", "比对文档", "查看差异", "比较实质性差异", or "核对合同".
 ---
 
 # Document Comparison Skill
 
-This skill helps users compare two documents (e.g., Lawyer's version vs Broker's version) to find substantive differences.
+This skill compares two documents to find substantive differences, errors, or inconsistencies. It is particularly useful for legal contracts, financial reports, or revised document versions.
 
-## Features
-1.  **Strict Logic Check**: Python script validates numbers, totals, and cross-references.
-2.  **Semantic Analysis**: **YOU (The Agent)** will read the text and identify semantic differences that the script might miss.
+## Usage
+
+```bash
+# Compare two specific files
+/compare-docs file1.docx file2.docx
+
+# Compare with specific focus
+/compare-docs file1.docx file2.docx --focus "financial data"
+```
 
 ## Workflow
 
-### Step 1: Run the Mechanical Comparison
-Run the python script to generate the base report and extract text.
-**IMPORTANT**: The script has been updated to output the *plain text* content of the documents to `.txt` files in the same directory as the report.
+1.  **Input Verification:**
+    *   Verify both input files exist.
+    *   Determine file type (.docx, .pdf, .md, .txt).
 
-```bash
-python3 ~/.gemini/antigravity/skills/document-comparison/scripts/compare_docs.py "/absolute/path/to/file1.docx" "/absolute/path/to/file2.docx"
-```
+2.  **Content Extraction:**
+    *   If files are `.docx`, use `pandoc` to convert them to Markdown for clear text analysis.
+        ```bash
+        pandoc -t markdown "file1.docx" -o "file1.md"
+        pandoc -t markdown "file2.docx" -o "file2.md"
+        ```
+    *   If files are `.pdf`, use available PDF reading tools.
 
-### Step 2: Agent Intelligence (Crucial!)
-The script is "dumb" but you are "smart".
-1.  **Read the Aligned JSON**: Look for file `Comparison_Aligned_<filename>.json`.
-2.  **Analyze Section by Section**: The JSON contains aligned sections from both documents. Loop through each item:
-    - If `text_a` or `text_b` is empty, note the missing section.
-    - Compare the content of `text_a` and `text_b`.
-    - **Focus on Facts**: Dates, Amounts, Names of Entities, Key Personnel (Actual Controller), Responsibilities.
-3.  **Update the Report**:
-    - Open the generated `Report_*.md`.
-    - Insert `## 🤖 Agent Insight` section.
-    - Summarize differences found in each section. Be concise but specific.
+3.  **Analysis & Comparison:**
+    *   Read the extracted content.
+    *   Compare the documents section by section or key-value by key-value.
+    *   **Focus Areas:**
+        *   **Numbers & Dates:** Check for discrepancies in financial figures, dates, percentages, and quantities.
+        *   **Key Clauses:** Identify added, removed, or modified clauses (especially in legal/contractual contexts).
+        *   **Definitions:** Check for changes in defined terms.
+    *   *Note:* Ignore minor formatting changes unless explicitly requested.
 
-### Step 3: Cleanup
-Delete the temporary JSON files.
+4.  **Report Generation:**
+    *   Create a Markdown report (`comparison_report.md`) structured as follows:
+        *   **Summary:** Brief overview of the comparison result.
+        *   **Critical Differences (High Risk):** Data mismatches, missing clauses, conflicting obligations.
+        *   **Substantive Changes:** Changes in meaning or scope.
+        *   **Stylistic/Format Changes:** (Optional) Brief mention of layout or phrasing changes that don't alter meaning.
+        *   **Recommendations:** Actionable advice based on findings.
 
-```bash
-rm /path/to/Text_Extract_*.txt
-```
+5.  **Output formatting & Delivery:**
+    *   Convert the Markdown report to a professional `.docx` document using `pandoc`.
+        ```bash
+        pandoc "comparison_report.md" -o "Comparison_Report.docx"
+        ```
+    *   **Open the file:** Automatically open the generated document so the user can view it immediately.
+        *   On macOS: `open "Comparison_Report.docx"`
+        *   On Windows: `start "Comparison_Report.docx"`
+        *   On Linux: `xdg-open "Comparison_Report.docx"`
+    *   Inform the user of the report location.
 
-### Step 4: Notify User
-Present the final report to the user.
+6.  **Cleanup:**
+    *   Remove temporary intermediate files (e.g., converted .md files) to keep the workspace clean.
+
+## Example Output Structure
+
+# Comparison Report
+
+## 1. Executive Summary
+...
+
+## 2. Key Discrepancies
+| Item | File A Value | File B Value | Impact |
+|------|--------------|--------------|--------|
+| Revenue | $10M | $12M | Significant |
+| ... | ... | ... | ... |
+
+## 3. Detailed Clause Analysis
+...
